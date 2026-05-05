@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>SyncplayChat</title>
+</head>
+<body>
+    <div id="SyncplayChatConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
+         data-require="emby-input,emby-button,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="SyncplayChatConfigForm">
+                    <div class="sectionTitleContainer">
+                        <h2 class="sectionTitle">🗨️ SyncplayChat Settings</h2>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="EnableChat" name="EnableChat" type="checkbox" is="emby-checkbox" />
+                            <span>Enable Chat Overlay</span>
+                        </label>
+                        <div class="fieldDescription">
+                            Shows a real-time chat panel on the right side of the video player
+                            when you are in a Syncplay session.
+                        </div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="MaxHistoryMessages">
+                            History Messages
+                        </label>
+                        <input id="MaxHistoryMessages" name="MaxHistoryMessages" type="number"
+                               is="emby-input" min="10" max="200" step="10" />
+                        <div class="fieldDescription">
+                            Number of past messages to load when you join a Syncplay room (10–200).
+                        </div>
+                    </div>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </form>
+
+                <div style="margin-top:32px; padding:16px; background:rgba(120,80,220,0.08);
+                            border:1px solid rgba(120,80,220,0.2); border-radius:8px;">
+                    <h3 style="margin:0 0 8px; font-size:14px; color:#c8b8ff;">📌 Setup Required</h3>
+                    <p style="margin:0; font-size:13px; line-height:1.6; color:rgba(255,255,255,0.6);">
+                        This plugin requires the
+                        <strong style="color:#b090ff;">File Transformation</strong> plugin to inject
+                        the chat overlay into the Jellyfin Web client.<br><br>
+                        Add this repository in <em>Dashboard → Plugins → Repositories</em>:<br>
+                        <code style="font-size:12px; background:rgba(0,0,0,0.3); padding:2px 6px;
+                                     border-radius:4px; display:inline-block; margin-top:4px; word-break:break-all;">
+                            https://www.iamparadox.dev/jellyfin/plugins/manifest.json
+                        </code>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            var SyncplayChatConfig = {
+                pluginUniqueId: 'c1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c'
+            };
+
+            document.querySelector('#SyncplayChatConfigPage')
+                .addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(SyncplayChatConfig.pluginUniqueId)
+                        .then(function (config) {
+                            document.querySelector('#EnableChat').checked = config.EnableChat;
+                            document.querySelector('#MaxHistoryMessages').value = config.MaxHistoryMessages;
+                            Dashboard.hideLoadingMsg();
+                        });
+                });
+
+            document.querySelector('#SyncplayChatConfigForm')
+                .addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(SyncplayChatConfig.pluginUniqueId)
+                        .then(function (config) {
+                            config.EnableChat = document.querySelector('#EnableChat').checked;
+                            config.MaxHistoryMessages = parseInt(
+                                document.querySelector('#MaxHistoryMessages').value, 10
+                            ) || 100;
+                            ApiClient.updatePluginConfiguration(
+                                SyncplayChatConfig.pluginUniqueId,
+                                config
+                            ).then(function (result) {
+                                Dashboard.processPluginConfigurationUpdateResult(result);
+                            });
+                        });
+                    return false;
+                });
+        </script>
+    </div>
+</body>
+</html>
