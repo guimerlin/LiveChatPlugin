@@ -138,7 +138,7 @@ public class SyncPlayChatEntryPoint : IHostedService
             }
 
             // Payload format required by File Transformation plugin
-            var payload = JsonSerializer.Serialize(new
+            var payloadString = JsonSerializer.Serialize(new
             {
                 id = Plugin.Instance?.Id.ToString() ?? Guid.NewGuid().ToString(),
                 fileNamePattern = "index\\.html$",
@@ -147,11 +147,23 @@ public class SyncPlayChatEntryPoint : IHostedService
                 callbackMethod = nameof(FileTransformationCallback.Transform)
             });
 
-            pluginInterfaceType
-                .GetMethod("RegisterTransformation")?
-                .Invoke(null, new object?[] { payload });
+            // The FileTransformation API expects a Newtonsoft.Json.Linq.JObject
+            var jObjectType = Type.GetType("Newtonsoft.Json.Linq.JObject, Newtonsoft.Json");
+            if (jObjectType != null)
+            {
+                var parseMethod = jObjectType.GetMethod("Parse", new[] { typeof(string) });
+                var payloadJObject = parseMethod?.Invoke(null, new object[] { payloadString });
 
-            _logger.LogInformation("[SyncPlayChat] Registered File Transformation for index.html.");
+                pluginInterfaceType
+                    .GetMethod("RegisterTransformation")?
+                    .Invoke(null, new object?[] { payloadJObject });
+
+                _logger.LogInformation("[SyncPlayChat] Registered File Transformation for index.html.");
+            }
+            else
+            {
+                _logger.LogWarning("[SyncPlayChat] Could not load Newtonsoft.Json.Linq.JObject. Injection failed.");
+            }
         }
         catch (Exception ex)
         {
