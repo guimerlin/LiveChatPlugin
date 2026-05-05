@@ -326,9 +326,9 @@
             this.style.height = Math.min(this.scrollHeight, 80) + 'px';
         });
 
-        // Hide toggle by default until SyncPlay is detected (optional, but requested by user to only show if in syncplay)
-        toggleBtn.style.display = 'none';
-        panel.style.display = 'none';
+        toggleBtn.classList.add('panel-hidden');
+        toggleBtn.innerHTML = arrowSvg('left');
+        panel.classList.add('hidden');
         panelVisible = false;
     }
 
@@ -349,21 +349,7 @@
         }
     }
 
-    function setPanelVisibility(show) {
-        const panel = document.getElementById(CONFIG.PANEL_ID);
-        const btn = document.getElementById('spc-toggle-btn');
-        if (!panel || !btn) return;
 
-        if (show) {
-            panel.style.display = 'flex';
-            btn.style.display = 'flex';
-            if (!panelVisible) togglePanel(); // open it by default when joining
-        } else {
-            panel.style.display = 'none';
-            btn.style.display = 'none';
-            if (panelVisible) togglePanel(); // close it
-        }
-    }
 
     // ─── Socket.IO Integration ────────────────────────────────────────────────
     async function loadSocketIo() {
@@ -451,30 +437,9 @@
     // ─── Jellyfin API Hooks ───────────────────────────────────────────────────
     function hookJellyfinEvents() {
         const tryHook = () => {
-            if (typeof window.ApiClient !== 'undefined' && window.ApiClient.messageSubscriptions) {
-                const already = window.ApiClient.messageSubscriptions.some(s => s._syncplayChatOwned);
-                if (!already) {
-                    window.ApiClient.messageSubscriptions.push({
-                        _syncplayChatOwned: true,
-                        messageType: 'SyncPlayGroupUpdate',
-                        callback: (msg) => {
-                            const data = typeof msg.Data === 'string' ? JSON.parse(msg.Data) : msg.Data;
-                            if (data && data.GroupId) {
-                                // Jellyfin native SyncPlay messages: GroupJoined, GroupLeft, NewGroup, etc.
-                                if (data.Type === 'GroupJoined' || data.Type === 'LibraryChanged') {
-                                    handleGroupJoined(data.GroupId);
-                                } else if (data.Type === 'GroupLeft') {
-                                    handleGroupLeft();
-                                }
-                            }
-                        }
-                    });
-                }
-                
-                // Fallback check: Periodically check SyncPlayManager or URL just in case we miss the WS message
-                setInterval(checkFallbackState, 5000);
-                checkFallbackState();
-
+            if (typeof window.ApiClient !== 'undefined' && typeof window.ApiClient.getSessions === 'function') {
+                setInterval(checkPlaybackState, 5000);
+                checkPlaybackState();
                 return true;
             }
             return false;
@@ -487,43 +452,48 @@
         }
     }
 
-    function checkFallbackState() {
-        // If there's a SyncPlay button in the header with an active state, it's a hint
-        const syncPlayBtn = document.querySelector('.headerSyncPlayButton');
-        if (!syncPlayBtn) return;
-        
-        // Jellyfin SyncPlay API could also be checked via ApiClient.getJSON, 
-        // but it's cleaner to rely on the websocket if possible.
-        // For now, if we are in a group, the chat is visible. 
+    async function checkPlaybackState() {
+        if (!window.ApiClient) return;
+        try {
+            const devId = typeof window.ApiClient.deviceId === 'function' ? window.ApiClient.deviceId() : null;
+            if (!devId) return;
+
+            const sessions = await window.ApiClient.getSessions();
+            const mySession = sessions.find(s => s.DeviceId === devId);
+
+            if (mySession && mySession.NowPlayingItem) {
+                const item = mySession.NowPlayingItem;
+                const itemId = item.Id;
+                const itemName = item.SeriesName ? `${item.SeriesName} - ${item.Name}` : item.Name;
+                handleRoomChange(itemId, itemName);
+            } else {
+                handleRoomChange('global', 'Global Chat');
+            }
+        } catch (e) {
+            console.warn('[SyncPlayChat] Error fetching sessions:', e);
+        }
     }
 
-    function handleGroupJoined(groupId) {
-        if (currentGroupId === groupId) return;
+    function handleRoomChange(roomId, roomName) {
+        if (currentGroupId === roomId) return;
         
         if (currentGroupId) {
             leaveChatRoom(currentGroupId);
         }
         
-        currentGroupId = groupId;
-        document.getElementById('spc-group-badge').textContent = groupId.substring(0, 8) + '…';
+        currentGroupId = roomId;
+        
+        const badge = document.getElementById('spc-group-badge');
+        if (badge) badge.textContent = roomName.length > 20 ? roomName.substring(0, 17) + '…' : roomName;
+        
         setActiveState(true);
-        setPanelVisibility(true);
-        appendSystemMessage('You joined the SyncPlay room 🎬');
+        appendSystemMessage(`You joined: ${roomName} 💬`);
         
         if (!socket) {
             connectToChatServer();
-        } else {
-            joinChatRoom(groupId);
+        } else if (isConnected) {
+            joinChatRoom(roomId);
         }
-    }
-
-    function handleGroupLeft() {
-        if (!currentGroupId) return;
-        leaveChatRoom(currentGroupId);
-        currentGroupId = null;
-        document.getElementById('spc-group-badge').textContent = 'Not in group';
-        setActiveState(false);
-        setPanelVisibility(false); // Hide the chat when leaving syncplay
     }
 
     function setActiveState(active) {
@@ -646,6 +616,7 @@
     function init() {
         injectStyles();
         buildPanel();
+        connectToChatServer();
         hookJellyfinEvents();
     }
 
