@@ -565,6 +565,11 @@
 
     // ─── DOM Helpers ──────────────────────────────────────────────────────────
     function appendMessageToDOM(msg) {
+        if (msg.isSystem) {
+            appendSystemMessage(msg.content);
+            return;
+        }
+
         const container = document.getElementById('spc-messages');
         if (!container) return;
 

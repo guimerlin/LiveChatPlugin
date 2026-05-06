@@ -28,18 +28,65 @@ io.on('connection', (socket) => {
     if (!groupId) return;
     
     socket.join(groupId);
-    console.log(`${username || socket.id} joined room: ${groupId}`);
+    const displayName = username || 'A user';
+    console.log(`${displayName} joined room: ${groupId}`);
+
+    // Create system notification message
+    const systemMsg = {
+      id: crypto.randomUUID(),
+      userId: 'system',
+      username: 'System',
+      groupId: groupId,
+      content: `${displayName} has joined the room.`,
+      timestamp: new Date().toISOString(),
+      isSystem: true
+    };
+
+    if (!roomHistory.has(groupId)) {
+      roomHistory.set(groupId, []);
+    }
+    const historyArray = roomHistory.get(groupId);
+    historyArray.push(systemMsg);
+    if (historyArray.length > HISTORY_LIMIT) {
+      historyArray.shift(); // Keep only latest HISTORY_LIMIT messages
+    }
 
     // Send chat history for this room to the newly connected user
-    const history = roomHistory.get(groupId) || [];
-    socket.emit('chatHistory', history);
+    socket.emit('chatHistory', historyArray);
+
+    // Broadcast system message to others in the room
+    socket.to(groupId).emit('newMessage', systemMsg);
   });
 
   // Leave a SyncPlay group chat
   socket.on('leaveRoom', ({ groupId, username }) => {
     if (!groupId) return;
     socket.leave(groupId);
-    console.log(`${username || socket.id} left room: ${groupId}`);
+    const displayName = username || 'A user';
+    console.log(`${displayName} left room: ${groupId}`);
+
+    // Create system notification message
+    const systemMsg = {
+      id: crypto.randomUUID(),
+      userId: 'system',
+      username: 'System',
+      groupId: groupId,
+      content: `${displayName} has left the room.`,
+      timestamp: new Date().toISOString(),
+      isSystem: true
+    };
+
+    if (!roomHistory.has(groupId)) {
+      roomHistory.set(groupId, []);
+    }
+    const historyArray = roomHistory.get(groupId);
+    historyArray.push(systemMsg);
+    if (historyArray.length > HISTORY_LIMIT) {
+      historyArray.shift(); // Keep only latest HISTORY_LIMIT messages
+    }
+
+    // Broadcast system message to others in the room
+    socket.to(groupId).emit('newMessage', systemMsg);
   });
 
   // Handle incoming chat messages
