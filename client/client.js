@@ -9,10 +9,12 @@
     // ─── Configuration ────────────────────────────────────────────────────────
     const CONFIG = {
         SERVER_URL: 'https://chatsocket.lumini.world',
+        CHAT_TITLE: 'SyncPlay Chat',
         PANEL_ID: 'syncplay-chat-panel',
         SCRIPT_TAG: 'syncplaychat-styles',
         WRAPPER_ID: 'syncplay-chat-wrapper',
         PLAYER_BTN_ID: 'spc-player-btn',
+        GLOBAL_BTN_ID: 'spc-global-btn',
     };
 
     // ─── State ────────────────────────────────────────────────────────────────
@@ -93,6 +95,119 @@
             #${CONFIG.PLAYER_BTN_ID}.spc-active #spc-player-btn-badge {
                 display: block;
             }
+
+            /* ── Floating Global Button ── */
+            #${CONFIG.GLOBAL_BTN_ID} {
+                position: fixed;
+                right: 0;
+                top: 50%;
+                transform: translateY(-50%);
+                background: var(--spc-bg);
+                color: var(--spc-text);
+                border: 1px solid var(--spc-panel-border);
+                border-right: none;
+                border-radius: 8px 0 0 8px;
+                width: 32px;
+                height: 48px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                z-index: 9999;
+                box-shadow: -2px 0 8px var(--spc-shadow);
+                transition: background 0.2s, opacity 0.3s;
+                opacity: 0.8;
+            }
+            #${CONFIG.GLOBAL_BTN_ID}:hover {
+                background: var(--spc-btn-hover);
+                opacity: 1;
+            }
+            body.spc-chat-open #${CONFIG.GLOBAL_BTN_ID} {
+                display: none;
+            }
+
+            /* ── Room Selection UI ── */
+            #spc-room-ui {
+                display: none;
+                flex-direction: column;
+                padding: 20px;
+                flex: 1;
+                gap: 16px;
+                color: var(--spc-text);
+            }
+            .spc-room-card {
+                background: rgba(255,255,255,0.05);
+                border: 1px solid var(--spc-panel-border);
+                border-radius: 12px;
+                padding: 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+            .spc-btn-primary {
+                background: var(--spc-primary);
+                color: #fff;
+                border: none;
+                padding: 10px 16px;
+                border-radius: 8px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: background 0.2s, transform 0.1s;
+                text-align: center;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+            .spc-btn-primary:hover { background: var(--spc-primary-hover); transform: scale(1.02); }
+            .spc-btn-secondary {
+                background: var(--spc-btn-bg);
+                color: var(--spc-text);
+                border: 1px solid var(--spc-panel-border);
+                padding: 10px 16px;
+                border-radius: 8px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: background 0.2s;
+                text-align: center;
+            }
+            .spc-btn-secondary:hover { background: var(--spc-btn-hover); }
+            .spc-input-lg {
+                background: var(--spc-input-bg);
+                border: 1px solid var(--spc-input-border);
+                border-radius: 8px;
+                padding: 10px 14px;
+                color: var(--spc-text);
+                font-size: 16px;
+                text-align: center;
+                letter-spacing: 2px;
+                outline: none;
+            }
+            .spc-input-lg:focus { border-color: var(--spc-primary); }
+            .spc-room-header {
+                font-size: 14px;
+                font-weight: 600;
+                color: var(--spc-text-muted);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            #spc-menu-btn {
+                background: transparent;
+                border: none;
+                color: var(--spc-text-muted);
+                cursor: pointer;
+                padding: 4px;
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: background 0.2s, color 0.2s;
+                margin-right: 4px;
+            }
+            #spc-menu-btn:hover { background: var(--spc-btn-hover); color: var(--spc-text); }
+            #spc-group-badge { cursor: pointer; transition: opacity 0.2s; }
+            #spc-group-badge:hover { opacity: 0.8; }
 
             /* ── RAVE-style wrapper: shrinks the video when chat is open ── */
             #${CONFIG.WRAPPER_ID} {
@@ -380,19 +495,44 @@
             <div id="spc-header">
                 <div id="spc-title">
                     ${chatIconSvg()}
-                    <span>SyncPlay Chat</span>
+                    <span>${CONFIG.CHAT_TITLE}</span>
                 </div>
-                <div style="display:flex;align-items:center;gap:8px;">
+                <div style="display:flex;align-items:center;gap:4px;">
                     <span id="spc-status-dot"></span>
-                    <span id="spc-group-badge">Not in group</span>
+                    <span id="spc-group-badge" title="Manage Rooms">Global</span>
+                    <button id="spc-menu-btn" aria-label="Menu" title="Menu">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
+                    </button>
                     <button id="spc-close-btn" aria-label="Close chat" title="Close chat">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                 </div>
             </div>
+            
+            <div id="spc-room-ui">
+                <div class="spc-room-card">
+                    <div class="spc-room-header">Current Room</div>
+                    <div style="font-size:18px;font-weight:700;" id="spc-current-room-label">Global Chat</div>
+                    <button class="spc-btn-secondary" id="spc-btn-leave-room" style="display:none;">Leave Room</button>
+                </div>
+                <div class="spc-room-card">
+                    <div class="spc-room-header">Create Room</div>
+                    <button class="spc-btn-primary" id="spc-btn-create-room">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Generate Code & Join
+                    </button>
+                </div>
+                <div class="spc-room-card">
+                    <div class="spc-room-header">Join Room</div>
+                    <input type="text" id="spc-join-input" class="spc-input-lg" placeholder="1234" maxlength="4">
+                    <button class="spc-btn-primary" id="spc-btn-join-room" style="margin-top:8px;">Join</button>
+                </div>
+                <button class="spc-btn-secondary" style="margin-top:auto;" id="spc-btn-back-chat">Back to Chat</button>
+            </div>
+
             <div id="spc-waiting">
                 <div class="spc-spinner"></div>
-                <span>Waiting for a SyncPlay session…</span>
+                <span>Connecting to chat server…</span>
             </div>
             <div id="spc-messages" style="display:none;" aria-live="polite"></div>
             <div id="spc-input-area" style="display:none;">
@@ -404,6 +544,30 @@
         document.body.appendChild(panel);
 
         document.getElementById('spc-close-btn').addEventListener('click', () => closeChat());
+        document.getElementById('spc-menu-btn').addEventListener('click', () => toggleRoomUI(true));
+        document.getElementById('spc-group-badge').addEventListener('click', () => toggleRoomUI(true));
+        document.getElementById('spc-btn-back-chat').addEventListener('click', () => toggleRoomUI(false));
+        
+        document.getElementById('spc-btn-create-room').addEventListener('click', () => {
+            const code = Math.floor(1000 + Math.random() * 9000).toString();
+            handleRoomChange(code, 'Room ' + code);
+            toggleRoomUI(false);
+        });
+
+        document.getElementById('spc-btn-join-room').addEventListener('click', () => {
+            const code = document.getElementById('spc-join-input').value.trim();
+            if(code.length > 0) {
+                handleRoomChange(code, 'Room ' + code);
+                document.getElementById('spc-join-input').value = '';
+                toggleRoomUI(false);
+            }
+        });
+
+        document.getElementById('spc-btn-leave-room').addEventListener('click', () => {
+            handleRoomChange('global', 'Global Chat');
+            toggleRoomUI(false);
+        });
+
         document.getElementById('spc-send-btn').addEventListener('click', handleSend);
         document.getElementById('spc-input').addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -417,22 +581,49 @@
         });
     }
 
+    function toggleRoomUI(show) {
+        const roomUI = document.getElementById('spc-room-ui');
+        const msgs = document.getElementById('spc-messages');
+        const input = document.getElementById('spc-input-area');
+        const waiting = document.getElementById('spc-waiting');
+        
+        if (show) {
+            roomUI.style.display = 'flex';
+            msgs.style.display = 'none';
+            input.style.display = 'none';
+            waiting.style.display = 'none';
+            
+            const currLabel = document.getElementById('spc-current-room-label');
+            const leaveBtn = document.getElementById('spc-btn-leave-room');
+            if(currentGroupId === 'global' || !currentGroupId) {
+                currLabel.textContent = 'Global Chat';
+                leaveBtn.style.display = 'none';
+            } else {
+                currLabel.textContent = 'Room ' + currentGroupId;
+                leaveBtn.style.display = 'block';
+            }
+        } else {
+            roomUI.style.display = 'none';
+            setActiveState(true);
+        }
+    }
+
     // ─── Chat open / close ────────────────────────────────────────────────────
     function openChat() {
         chatOpen = true;
         updateBodyClasses();
         document.body.classList.add('spc-chat-open');
 
-        const btn = document.getElementById(CONFIG.PLAYER_BTN_ID);
-        if (btn) btn.classList.add('spc-active');
+        const btnP = document.getElementById(CONFIG.PLAYER_BTN_ID);
+        if (btnP) btnP.classList.add('spc-active');
     }
 
     function closeChat() {
         chatOpen = false;
         document.body.classList.remove('spc-chat-open');
 
-        const btn = document.getElementById(CONFIG.PLAYER_BTN_ID);
-        if (btn) btn.classList.remove('spc-active');
+        const btnP = document.getElementById(CONFIG.PLAYER_BTN_ID);
+        if (btnP) btnP.classList.remove('spc-active');
     }
 
     function toggleChat() {
@@ -452,14 +643,10 @@
     });
 
     // ─── Inject button into Jellyfin player OSD ───────────────────────────────
-    // Jellyfin renders the OSD dynamically; we observe the DOM for it.
     function injectPlayerButton() {
         if (document.getElementById(CONFIG.PLAYER_BTN_ID)) return;
 
-        // Known Jellyfin OSD right-side button containers
-        // Try multiple selectors in priority order
         // Known Jellyfin OSD right-side button containers — ordered by specificity
-        // These class names come from jellyfin-web source and community CSS docs
         const targetSelectors = [
             // Modern Jellyfin (10.9+) and custom themes like Finimalism
             '.videoOsdBottom-maincontrols .buttons',
@@ -482,16 +669,14 @@
             if (container) break;
         }
 
-        // If no container yet, the player may not be open — observer will retry
         if (!container) return;
 
         const btn = document.createElement('button');
         btn.id = CONFIG.PLAYER_BTN_ID;
-        // Add native Jellyfin button classes so it blends with other OSD buttons
         btn.className = 'paper-icon-button-light';
         btn.setAttribute('is', 'paper-icon-button-light');
-        btn.setAttribute('aria-label', 'SyncPlay Chat');
-        btn.setAttribute('title', 'SyncPlay Chat');
+        btn.setAttribute('aria-label', CONFIG.CHAT_TITLE);
+        btn.setAttribute('title', CONFIG.CHAT_TITLE);
         btn.innerHTML = `
             ${chatIconSvg(22)}
             <span id="spc-player-btn-badge"></span>
@@ -501,7 +686,6 @@
             toggleChat();
         });
 
-        // Insert before the settings button if found, otherwise append
         const settingsBtn = container.querySelector(
             '.btnSettings, .btnVideoSettings, [data-action="settings"], ' +
             '.paper-icon-button-light[title*="etting"], .paper-icon-button-light[title*="onfig"]'
@@ -513,16 +697,42 @@
         }
     }
 
-    function watchForPlayer() {
-        if (playerObserver) return;
+    // ─── Floating Global Button ───────────────────────────────────────────────
+    function injectFloatingButton() {
+        if (document.getElementById(CONFIG.GLOBAL_BTN_ID)) return;
 
-        playerObserver = new MutationObserver(() => {
-            injectPlayerButton();
+        const btn = document.createElement('button');
+        btn.id = CONFIG.GLOBAL_BTN_ID;
+        btn.setAttribute('aria-label', 'Open ' + CONFIG.CHAT_TITLE);
+        btn.setAttribute('title', 'Open ' + CONFIG.CHAT_TITLE);
+        
+        // Chevron left SVG pointing inwards
+        btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>`;
+        
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleChat();
         });
 
-        playerObserver.observe(document.body, { childList: true, subtree: true });
+        document.body.appendChild(btn);
+    }
 
-        // Also try immediately in case player is already open
+    function watchForUI() {
+        if (!playerObserver) {
+            playerObserver = new MutationObserver(() => {
+                injectFloatingButton();
+                injectPlayerButton();
+            });
+            playerObserver.observe(document.body, { childList: true, subtree: true });
+        }
+        
+        // Fallback polling
+        setInterval(() => {
+            injectFloatingButton();
+            injectPlayerButton();
+        }, 2000);
+        
+        injectFloatingButton();
         injectPlayerButton();
     }
 
@@ -547,7 +757,11 @@
             socket.on('connect', () => {
                 isConnected = true;
                 updateStatusDot();
-                if (currentGroupId) joinChatRoom(currentGroupId);
+                if (!currentGroupId) {
+                    handleRoomChange('global', 'Global Chat');
+                } else {
+                    joinChatRoom(currentGroupId);
+                }
             });
 
             socket.on('disconnect', () => {
@@ -597,40 +811,6 @@
         });
     }
 
-    // ─── Jellyfin API Hooks ───────────────────────────────────────────────────
-    function hookJellyfinEvents() {
-        const tryHook = () => {
-            if (typeof window.ApiClient !== 'undefined' && typeof window.ApiClient.getSessions === 'function') {
-                setInterval(checkPlaybackState, 5000);
-                checkPlaybackState();
-                return true;
-            }
-            return false;
-        };
-        if (!tryHook()) {
-            const interval = setInterval(() => { if (tryHook()) clearInterval(interval); }, 1000);
-        }
-    }
-
-    async function checkPlaybackState() {
-        if (!window.ApiClient) return;
-        try {
-            const devId = typeof window.ApiClient.deviceId === 'function' ? window.ApiClient.deviceId() : null;
-            if (!devId) return;
-            const sessions = await window.ApiClient.getSessions();
-            const mySession = sessions.find(s => s.DeviceId === devId);
-            if (mySession && mySession.NowPlayingItem) {
-                const item = mySession.NowPlayingItem;
-                const itemName = item.SeriesName ? `${item.SeriesName} - ${item.Name}` : item.Name;
-                handleRoomChange(item.Id, itemName);
-            } else {
-                handleRoomChange('global', 'Global Chat');
-            }
-        } catch (e) {
-            console.warn('[SyncPlayChat] Error fetching sessions:', e);
-        }
-    }
-
     function handleRoomChange(roomId, roomName) {
         if (currentGroupId === roomId) return;
         if (currentGroupId) leaveChatRoom(currentGroupId);
@@ -644,6 +824,9 @@
     }
 
     function setActiveState(active) {
+        const roomUI = document.getElementById('spc-room-ui');
+        if (roomUI && roomUI.style.display === 'flex') return; // Don't override if room menu is open
+
         const waiting = document.getElementById('spc-waiting');
         const messages = document.getElementById('spc-messages');
         const inputArea = document.getElementById('spc-input-area');
@@ -748,8 +931,7 @@
         injectStyles();
         buildPanel();
         connectToChatServer();
-        hookJellyfinEvents();
-        watchForPlayer();
+        watchForUI();
     }
 
     if (document.readyState === 'loading') {

@@ -1,0 +1,305 @@
+<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Chats</title>
+
+    <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400&display=swap" rel="stylesheet">
+
+    <style type="text/css">
+      :root {
+        --background: #0f0f0f;
+        --border: #3a3a3a;
+        --border-dark: #1f1f1f;
+        --primary: #ff4c00;
+        --text-primary: #efefef;
+        --text-secondary: #bab6b6;
+      }
+
+      html, body {
+        margin: 0;
+
+        color: var(--text-primary);
+        background-color: var(--background);
+
+        font-family: 'Montserrat', Verdana, sans-serif;
+      }
+
+      .container {
+        height: 80vh;
+        margin: 10vh 10vw;
+        box-sizing: border-box;
+      }
+
+      @media screen and (max-width: 768px) {
+        .container {
+          height: 90vw;
+          height: calc(100% - 2rem);
+          margin: 1rem 1rem;
+        }
+      }
+
+      .title {
+        font-size: 2.2rem;
+        font-weight: 300;
+        letter-spacing: 0.15rem;
+        margin: 0 0 1rem 1rem;
+      }
+
+      .row {
+        display: flex;
+        flex-direction: row;
+      }
+
+      .column {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .grow {
+        flex: 1;
+      }
+
+      .search {
+        display: flex;
+        flex-direction: row;
+        margin: 0 0 1rem 1rem;
+      }
+
+      input {
+        flex: 1;
+        padding: 0.4rem 1rem;
+        background-color: var(--background);
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        color: var(--text-primary);
+        outline: none;
+        transition: border 0.1s ease-in-out;
+      }
+
+      input:active,
+      input:focus {
+        border: 1px solid var(--primary);
+      }
+
+      .chat-list {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .chat {
+        transition: all 0.1s ease-in-out;
+      }
+
+      .chat.active,
+      .chat:active,
+      .chat:focus,
+      .chat:hover {
+        color: var(--primary);
+        background: var(--border-dark);
+        border-radius: 1rem;
+      }
+
+      .chat-inner {
+        display: flex;
+        flex-direction: row;
+        cursor: pointer;
+        margin: 1rem;
+      }
+
+      .chat-left .contact-image {
+        display: flex;
+      }
+
+      .chat-left .contact-image img {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        margin-right: 1rem;
+        object-fit: cover;
+        overflow: hidden;
+      }
+
+      .chat-right {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+
+      .chat-right .contact-name {
+        margin-bottom: 0.15rem;
+      }
+
+      .chat-right .last-message {
+        color: var(--text-secondary);
+        font-size: 0.8em;
+      }
+
+      .actions {
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+      }
+
+      .new-chat-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--primary);
+        border-radius: 50%;
+        padding: 1rem;
+        border: 1px solid var(--border-dark);
+        transition: transform 0.2s ease-in-out;
+        cursor: pointer;
+      }
+
+      .new-chat-btn:hover {
+        transform: scale(1.1) rotate(180deg);
+        outline: none;
+      }
+
+      .new-chat-btn img {
+        max-width: 1rem;
+        outline: none;
+      }
+
+      .right {
+        padding-left: 5vw;
+      }
+
+      .chat-window {
+        padding: 1rem;
+        height: 100%;
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+      }
+
+      .chat-window-message {
+        max-width: 60%;
+        display: flex;
+        flex-direction: row;
+      }
+
+      .chat-window-message .message-content {
+        background: var(--border);
+        border-radius: 1rem;
+        padding: 0.5rem 1rem;
+        width: fit-content;
+        font-size: 0.8rem;
+      }
+
+      .chat-window-message .contact-image {
+        display: flex;
+        align-items: center;
+      }
+
+      .chat-window-message .contact-image img {
+        width: 25px;
+        height: 25px;
+        border-radius: 50%;
+        object-fit: cover;
+        overflow: hidden;
+      }
+
+      .chat-window-message.them .contact-image img {
+        margin-right: 0.5rem;
+      }
+
+      .chat-window-message.you .contact-image img {
+        margin-left: 0.5rem;
+      }
+
+      .chat-window-message.you {
+        margin-left: auto;
+        flex-direction: row-reverse;
+      }
+
+      .chat-window-message:not(:last-of-type) {
+        margin-bottom: 1rem;
+      }
+
+      .chat-window-new-message  {
+        margin-top: 1rem;
+      }
+
+      .chat-window-new-message input {
+        width: -webkit-fill-available;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container column">
+      <div class="title">
+        Chats
+      </div>
+
+      <div class="row grow">
+        <div class="left column">
+          <div class="search">
+            <input type="text" placeholder="Search" />
+          </div>
+
+          <div class="chat-list">
+            <div class="chat">
+              <div class="chat-inner">
+                <div class="chat-left">
+                  <div class="contact-image"><img src="http://olivia-nunn.com/img/liv.jpg" title="Olivia Nunn" /></div>
+                </div>
+                <div class="chat-right">
+                  <div class="contact-name">Olivia Nunn</div>
+                  <div class="last-message">I'll be right there</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="chat active">
+              <div class="chat-inner">
+                <div class="chat-left">
+                  <div class="contact-image"><img src="https://i.imgur.com/ZEG5JtS.jpg" title="Sam Woodrow" /></div>
+                </div>
+                <div class="chat-right">
+                  <div class="contact-name">Sam Woodrow</div>
+                  <div class="last-message">Not sure I know what you mean? 🤷</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="right column grow">
+          <div class="chat-window">
+            <div class="chat-window-message them">
+              <div class="contact-image"><img src="https://i.imgur.com/ZEG5JtS.jpg" title="Sam Woodrow" /></div>
+              <div class="message-content">Lorem ipsum dolor se...</div>
+            </div>
+
+            <div class="chat-window-message you">
+              <div class="contact-image"><img src="https://scontent-lht6-1.xx.fbcdn.net/v/t1.0-1/cp0/p60x60/16807092_10155087006058854_2205433664988663039_n.jpg?_nc_cat=103&_nc_ohc=UGJ3-FZ_dDsAX_Mn8b7&_nc_ht=scontent-lht6-1.xx&oh=c4955f2df30969fc817eb73fa53735d4&oe=5EF086DE" title="Sam Woodrow" /></div>
+              <div class="message-content">A really, really, really long comment. I could have said something here but, instead, I waffle.</div>
+            </div>
+
+            <div class="chat-window-message you">
+              <div class="contact-image"><img src="https://scontent-lht6-1.xx.fbcdn.net/v/t1.0-1/cp0/p60x60/16807092_10155087006058854_2205433664988663039_n.jpg?_nc_cat=103&_nc_ohc=UGJ3-FZ_dDsAX_Mn8b7&_nc_ht=scontent-lht6-1.xx&oh=c4955f2df30969fc817eb73fa53735d4&oe=5EF086DE" title="Sam Woodrow" /></div>
+              <div class="message-content">Exactly like the other day!</div>
+            </div>
+
+            <div class="chat-window-message them">
+              <div class="contact-image"><img src="https://i.imgur.com/ZEG5JtS.jpg" title="Sam Woodrow" /></div>
+              <div class="message-content">Not sure I know what you mean? 🤷</div>
+            </div>
+          </div>
+
+          <div class="chat-window-new-message">
+            <input type="text" placeholder="What do you want to say?" />
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <div class="new-chat-btn">
+          <img src="plus.png" title="Start a new chat">
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
