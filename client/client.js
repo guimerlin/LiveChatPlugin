@@ -1,23 +1,31 @@
 /**
  * Jellyfin SyncPlay Chat — Client Overlay
  * Connects to a standalone Node.js Docker chat server.
+ * Features: Player chat button + RAVE-style layout (side-by-side desktop, stacked mobile)
  */
 (function () {
     'use strict';
 
     // ─── Configuration ────────────────────────────────────────────────────────
     const CONFIG = {
-        // Change this to your Node.js Chat Server IP/Port
-        SERVER_URL: 'http://localhost:3000',
+        SERVER_URL: 'https://chatsocket.lumini.world',
         PANEL_ID: 'syncplay-chat-panel',
-        SCRIPT_TAG: 'syncplaychat-styles'
+        SCRIPT_TAG: 'syncplaychat-styles',
+        WRAPPER_ID: 'syncplay-chat-wrapper',
+        PLAYER_BTN_ID: 'spc-player-btn',
     };
 
     // ─── State ────────────────────────────────────────────────────────────────
     let currentGroupId = null;
-    let panelVisible = true;
+    let chatOpen = false;
     let socket = null;
     let isConnected = false;
+    let playerObserver = null;
+
+    // ─── Detect mobile ────────────────────────────────────────────────────────
+    function isMobile() {
+        return window.innerWidth <= 768;
+    }
 
     // ─── Styles ───────────────────────────────────────────────────────────────
     function injectStyles() {
@@ -26,108 +34,151 @@
         style.id = CONFIG.SCRIPT_TAG;
         style.textContent = `
             :root {
-                --spc-bg: #ffffff;
-                --spc-panel-border: rgba(0,0,0,0.1);
-                --spc-text: #111827;
-                --spc-text-muted: #6b7280;
-                --spc-btn-bg: #ffffff;
-                --spc-btn-hover: #f3f4f6;
-                --spc-header-bg: #f9fafb;
-                --spc-badge-bg: #e0e7ff;
-                --spc-badge-text: #4338ca;
+                --spc-bg: #111827;
+                --spc-panel-border: rgba(255,255,255,0.08);
+                --spc-text: #f9fafb;
+                --spc-text-muted: #9ca3af;
+                --spc-btn-bg: #1f2937;
+                --spc-btn-hover: #374151;
+                --spc-header-bg: #1f2937;
+                --spc-badge-bg: rgba(59,130,246,0.2);
+                --spc-badge-text: #93c5fd;
                 --spc-primary: #3b82f6;
-                --spc-primary-hover: #2563eb;
-                --spc-input-bg: #f3f4f6;
-                --spc-input-border: #d1d5db;
-                --spc-avatar-bg: #e2e8f0;
-                --spc-avatar-text: #334155;
-                --spc-msg-own-name: #2563eb;
-                --spc-msg-name: #475569;
-                --spc-shadow: rgba(0,0,0,0.05);
+                --spc-primary-hover: #60a5fa;
+                --spc-input-bg: rgba(255,255,255,0.05);
+                --spc-input-border: rgba(255,255,255,0.1);
+                --spc-avatar-bg: #374151;
+                --spc-avatar-text: #f3f4f6;
+                --spc-msg-own-name: #60a5fa;
+                --spc-msg-name: #cbd5e1;
+                --spc-shadow: rgba(0,0,0,0.5);
             }
 
-            @media (prefers-color-scheme: dark) {
-                :root {
-                    --spc-bg: #111827;
-                    --spc-panel-border: rgba(255,255,255,0.1);
-                    --spc-text: #f9fafb;
-                    --spc-text-muted: #9ca3af;
-                    --spc-btn-bg: #1f2937;
-                    --spc-btn-hover: #374151;
-                    --spc-header-bg: #1f2937;
-                    --spc-badge-bg: rgba(59, 130, 246, 0.2);
-                    --spc-badge-text: #93c5fd;
-                    --spc-primary: #3b82f6;
-                    --spc-primary-hover: #60a5fa;
-                    --spc-input-bg: rgba(255,255,255,0.05);
-                    --spc-input-border: rgba(255,255,255,0.1);
-                    --spc-avatar-bg: #374151;
-                    --spc-avatar-text: #f3f4f6;
-                    --spc-msg-own-name: #60a5fa;
-                    --spc-msg-name: #cbd5e1;
-                    --spc-shadow: rgba(0,0,0,0.5);
-                }
+            /* ── Player chat button injected into OSD ── */
+            #${CONFIG.PLAYER_BTN_ID} {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 40px;
+                height: 40px;
+                background: transparent;
+                border: none;
+                border-radius: 50%;
+                cursor: pointer;
+                color: #fff;
+                opacity: 0.85;
+                transition: opacity 0.2s, background 0.2s, transform 0.15s;
+                position: relative;
+            }
+            #${CONFIG.PLAYER_BTN_ID}:hover {
+                opacity: 1;
+                background: rgba(255,255,255,0.1);
+                transform: scale(1.1);
+            }
+            #${CONFIG.PLAYER_BTN_ID}.spc-active {
+                color: #3b82f6;
+                opacity: 1;
+            }
+            #spc-player-btn-badge {
+                position: absolute;
+                top: 4px;
+                right: 4px;
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: #10b981;
+                border: 1.5px solid #000;
+                display: none;
+            }
+            #${CONFIG.PLAYER_BTN_ID}.spc-active #spc-player-btn-badge {
+                display: block;
             }
 
-            /* ── Container ── */
+            /* ── RAVE-style wrapper: shrinks the video when chat is open ── */
+            #${CONFIG.WRAPPER_ID} {
+                display: contents;
+            }
+
+            /* Desktop: side-by-side layout */
+            body.spc-chat-open:not(.spc-mobile) #videoPlayer,
+            body.spc-chat-open:not(.spc-mobile) .videoPlayerContainer,
+            body.spc-chat-open:not(.spc-mobile) #video-player-container,
+            body.spc-chat-open:not(.spc-mobile) .videoOsdBottom,
+            body.spc-chat-open:not(.spc-mobile) .osdHeader,
+            body.spc-chat-open:not(.spc-mobile) .skinHeader {
+                width: calc(100vw - 340px) !important;
+                max-width: calc(100vw - 340px) !important;
+                transition: width 0.35s cubic-bezier(0.4,0,0.2,1);
+            }
+
+            /* Mobile: top/bottom stacked layout */
+            body.spc-chat-open.spc-mobile #videoPlayer,
+            body.spc-chat-open.spc-mobile .videoPlayerContainer,
+            body.spc-chat-open.spc-mobile #video-player-container,
+            body.spc-chat-open.spc-mobile .videoOsdBottom,
+            body.spc-chat-open.spc-mobile .osdHeader,
+            body.spc-chat-open.spc-mobile .skinHeader {
+                height: 38vh !important;
+                max-height: 38vh !important;
+                width: 100vw !important;
+                max-width: 100vw !important;
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                transition: height 0.35s cubic-bezier(0.4,0,0.2,1);
+            }
+
+            /* ── Chat Panel ── */
             #${CONFIG.PANEL_ID} {
                 position: fixed;
-                top: 0;
-                right: 0;
-                width: 320px;
-                height: 100vh;
                 z-index: 10000;
                 display: flex;
                 flex-direction: column;
                 background: var(--spc-bg);
+                font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+                color: var(--spc-text);
+                transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease;
+                /* Desktop default: right side */
+                top: 0;
+                right: 0;
+                width: 340px;
+                height: 100vh;
                 border-left: 1px solid var(--spc-panel-border);
                 box-shadow: -4px 0 32px var(--spc-shadow);
-                font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-                transition: transform 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease;
-                transform: translateX(0);
-                color: var(--spc-text);
-            }
-
-            #${CONFIG.PANEL_ID}.hidden {
                 transform: translateX(100%);
                 opacity: 0;
                 pointer-events: none;
             }
 
-            /* ── Toggle button (always visible) ── */
-            #spc-toggle-btn {
-                position: fixed;
-                top: 50%;
+            body.spc-mobile #${CONFIG.PANEL_ID} {
+                /* Mobile: bottom panel */
+                top: 38vh;
+                left: 0;
                 right: 0;
-                transform: translateY(-50%);
-                z-index: 10001;
-                width: 28px;
-                height: 60px;
-                background: var(--spc-btn-bg);
-                border: 1px solid var(--spc-panel-border);
-                border-right: none;
-                border-radius: 8px 0 0 8px;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: background 0.2s, right 0.3s cubic-bezier(0.4,0,0.2,1);
-                color: var(--spc-text-muted);
-                padding: 0;
-                outline: none;
-                box-shadow: -2px 0 12px var(--spc-shadow);
+                width: 100vw;
+                height: calc(62vh - 0px);
+                border-left: none;
+                border-top: 1px solid var(--spc-panel-border);
+                box-shadow: 0 -4px 32px var(--spc-shadow);
+                transform: translateY(100%);
             }
 
-            #spc-toggle-btn:hover { background: var(--spc-btn-hover); color: var(--spc-text); }
-            #spc-toggle-btn.panel-hidden { right: 0; }
-            #spc-toggle-btn:not(.panel-hidden) { right: 320px; }
+            body.spc-chat-open #${CONFIG.PANEL_ID} {
+                transform: translateX(0);
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            body.spc-chat-open.spc-mobile #${CONFIG.PANEL_ID} {
+                transform: translateY(0);
+            }
 
             /* ── Header ── */
             #spc-header {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                padding: 14px 16px 12px;
+                padding: 12px 14px 10px;
                 border-bottom: 1px solid var(--spc-panel-border);
                 flex-shrink: 0;
                 background: var(--spc-header-bg);
@@ -143,17 +194,13 @@
                 gap: 7px;
             }
 
-            #spc-title svg {
-                stroke: var(--spc-text);
-            }
-
             #spc-group-badge {
                 font-size: 10px;
                 background: var(--spc-badge-bg);
                 border-radius: 20px;
                 padding: 3px 8px;
                 color: var(--spc-badge-text);
-                max-width: 140px;
+                max-width: 130px;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
@@ -164,10 +211,24 @@
                 width: 7px;
                 height: 7px;
                 border-radius: 50%;
-                background: #f87171;
+                background: #ef4444;
                 flex-shrink: 0;
                 transition: background 0.3s;
             }
+
+            #spc-close-btn {
+                background: transparent;
+                border: none;
+                color: var(--spc-text-muted);
+                cursor: pointer;
+                padding: 4px;
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: background 0.2s, color 0.2s;
+            }
+            #spc-close-btn:hover { background: var(--spc-btn-hover); color: var(--spc-text); }
 
             /* ── Messages area ── */
             #spc-messages {
@@ -222,7 +283,6 @@
             .spc-username { font-size: 12px; font-weight: 600; color: var(--spc-msg-name); }
             .spc-time { font-size: 10px; color: var(--spc-text-muted); }
             .spc-content { font-size: 13px; line-height: 1.45; color: var(--spc-text); word-break: break-word; white-space: pre-wrap; }
-
             .spc-msg.own .spc-username { color: var(--spc-msg-own-name); }
 
             /* ── System message ── */
@@ -255,17 +315,13 @@
                 color: var(--spc-text);
                 outline: none;
                 font-family: inherit;
-                transition: border-color 0.2s, background 0.2s;
+                transition: border-color 0.2s;
                 resize: none;
                 max-height: 80px;
                 line-height: 1.4;
             }
-
             #spc-input::placeholder { color: var(--spc-text-muted); }
-            #spc-input:focus {
-                border-color: var(--spc-primary);
-                background: var(--spc-bg);
-            }
+            #spc-input:focus { border-color: var(--spc-primary); }
 
             #spc-send-btn {
                 width: 36px;
@@ -278,9 +334,8 @@
                 align-items: center;
                 justify-content: center;
                 flex-shrink: 0;
-                transition: transform 0.15s, opacity 0.15s, background 0.2s;
+                transition: transform 0.15s, background 0.2s;
             }
-
             #spc-send-btn:hover { transform: scale(1.05); background: var(--spc-primary-hover); }
             #spc-send-btn:active { transform: scale(0.95); }
             #spc-send-btn svg { pointer-events: none; }
@@ -298,8 +353,6 @@
                 text-align: center;
                 padding: 24px;
             }
-
-            #spc-waiting svg { opacity: 0.5; }
 
             .spc-spinner {
                 width: 32px;
@@ -319,12 +372,6 @@
     function buildPanel() {
         if (document.getElementById(CONFIG.PANEL_ID)) return;
 
-        const toggleBtn = document.createElement('button');
-        toggleBtn.id = 'spc-toggle-btn';
-        toggleBtn.setAttribute('aria-label', 'Toggle SyncPlay Chat');
-        toggleBtn.innerHTML = arrowSvg('right');
-        toggleBtn.addEventListener('click', togglePanel);
-
         const panel = document.createElement('div');
         panel.id = CONFIG.PANEL_ID;
         panel.setAttribute('role', 'complementary');
@@ -338,6 +385,9 @@
                 <div style="display:flex;align-items:center;gap:8px;">
                     <span id="spc-status-dot"></span>
                     <span id="spc-group-badge">Not in group</span>
+                    <button id="spc-close-btn" aria-label="Close chat" title="Close chat">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
                 </div>
             </div>
             <div id="spc-waiting">
@@ -351,9 +401,9 @@
             </div>
         `;
 
-        document.body.appendChild(toggleBtn);
         document.body.appendChild(panel);
 
+        document.getElementById('spc-close-btn').addEventListener('click', () => closeChat());
         document.getElementById('spc-send-btn').addEventListener('click', handleSend);
         document.getElementById('spc-input').addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -361,36 +411,120 @@
                 handleSend();
             }
         });
-
         document.getElementById('spc-input').addEventListener('input', function () {
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 80) + 'px';
         });
-
-        toggleBtn.classList.add('panel-hidden');
-        toggleBtn.innerHTML = arrowSvg('left');
-        panel.classList.add('hidden');
-        panelVisible = false;
     }
 
-    function togglePanel() {
-        panelVisible = !panelVisible;
-        const panel = document.getElementById(CONFIG.PANEL_ID);
-        const btn = document.getElementById('spc-toggle-btn');
-        if (!panel || !btn) return;
+    // ─── Chat open / close ────────────────────────────────────────────────────
+    function openChat() {
+        chatOpen = true;
+        updateBodyClasses();
+        document.body.classList.add('spc-chat-open');
 
-        if (panelVisible) {
-            panel.classList.remove('hidden');
-            btn.classList.remove('panel-hidden');
-            btn.innerHTML = arrowSvg('right');
+        const btn = document.getElementById(CONFIG.PLAYER_BTN_ID);
+        if (btn) btn.classList.add('spc-active');
+    }
+
+    function closeChat() {
+        chatOpen = false;
+        document.body.classList.remove('spc-chat-open');
+
+        const btn = document.getElementById(CONFIG.PLAYER_BTN_ID);
+        if (btn) btn.classList.remove('spc-active');
+    }
+
+    function toggleChat() {
+        if (chatOpen) closeChat(); else openChat();
+    }
+
+    function updateBodyClasses() {
+        if (isMobile()) {
+            document.body.classList.add('spc-mobile');
         } else {
-            panel.classList.add('hidden');
-            btn.classList.add('panel-hidden');
-            btn.innerHTML = arrowSvg('left');
+            document.body.classList.remove('spc-mobile');
         }
     }
 
+    window.addEventListener('resize', () => {
+        if (chatOpen) updateBodyClasses();
+    });
 
+    // ─── Inject button into Jellyfin player OSD ───────────────────────────────
+    // Jellyfin renders the OSD dynamically; we observe the DOM for it.
+    function injectPlayerButton() {
+        if (document.getElementById(CONFIG.PLAYER_BTN_ID)) return;
+
+        // Known Jellyfin OSD right-side button containers
+        // Try multiple selectors in priority order
+        // Known Jellyfin OSD right-side button containers — ordered by specificity
+        // These class names come from jellyfin-web source and community CSS docs
+        const targetSelectors = [
+            // Modern Jellyfin (10.9+) and custom themes like Finimalism
+            '.videoOsdBottom-maincontrols .buttons',
+            '.videoOsdBottom-maincontrols .flex-shrink-zero',
+            '.videoOsdBottom .buttons',
+            '.videoOsdBottom-buttons',
+            // Older / alternative layout
+            '.videoOsdBottom .flex-shrink-zero',
+            '.videoOsdBottom .osdControls',
+            '.osdControls',
+            // Fallback: full bottom bar
+            '.videoOsdBottom',
+            // Last resort
+            '#videoOsdPage .buttons',
+        ];
+
+        let container = null;
+        for (const sel of targetSelectors) {
+            container = document.querySelector(sel);
+            if (container) break;
+        }
+
+        // If no container yet, the player may not be open — observer will retry
+        if (!container) return;
+
+        const btn = document.createElement('button');
+        btn.id = CONFIG.PLAYER_BTN_ID;
+        // Add native Jellyfin button classes so it blends with other OSD buttons
+        btn.className = 'paper-icon-button-light';
+        btn.setAttribute('is', 'paper-icon-button-light');
+        btn.setAttribute('aria-label', 'SyncPlay Chat');
+        btn.setAttribute('title', 'SyncPlay Chat');
+        btn.innerHTML = `
+            ${chatIconSvg(22)}
+            <span id="spc-player-btn-badge"></span>
+        `;
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleChat();
+        });
+
+        // Insert before the settings button if found, otherwise append
+        const settingsBtn = container.querySelector(
+            '.btnSettings, .btnVideoSettings, [data-action="settings"], ' +
+            '.paper-icon-button-light[title*="etting"], .paper-icon-button-light[title*="onfig"]'
+        );
+        if (settingsBtn) {
+            container.insertBefore(btn, settingsBtn);
+        } else {
+            container.appendChild(btn);
+        }
+    }
+
+    function watchForPlayer() {
+        if (playerObserver) return;
+
+        playerObserver = new MutationObserver(() => {
+            injectPlayerButton();
+        });
+
+        playerObserver.observe(document.body, { childList: true, subtree: true });
+
+        // Also try immediately in case player is already open
+        injectPlayerButton();
+    }
 
     // ─── Socket.IO Integration ────────────────────────────────────────────────
     async function loadSocketIo() {
@@ -406,7 +540,6 @@
 
     async function connectToChatServer() {
         if (socket) return;
-        
         try {
             const io = await loadSocketIo();
             socket = io(CONFIG.SERVER_URL);
@@ -414,9 +547,7 @@
             socket.on('connect', () => {
                 isConnected = true;
                 updateStatusDot();
-                if (currentGroupId) {
-                    joinChatRoom(currentGroupId);
-                }
+                if (currentGroupId) joinChatRoom(currentGroupId);
             });
 
             socket.on('disconnect', () => {
@@ -442,36 +573,27 @@
 
     function joinChatRoom(groupId) {
         if (!socket || !isConnected) return;
-        socket.emit('joinRoom', {
-            groupId: groupId,
-            username: getCurrentUsername()
-        });
+        socket.emit('joinRoom', { groupId, username: getCurrentUsername() });
     }
 
     function leaveChatRoom(groupId) {
         if (!socket || !isConnected) return;
-        socket.emit('leaveRoom', {
-            groupId: groupId,
-            username: getCurrentUsername()
-        });
+        socket.emit('leaveRoom', { groupId, username: getCurrentUsername() });
     }
 
     function handleSend() {
         if (!socket || !isConnected || !currentGroupId) return;
-        
         const input = document.getElementById('spc-input');
         if (!input) return;
         const content = input.value.trim();
         if (!content) return;
-
         input.value = '';
         input.style.height = 'auto';
-
         socket.emit('sendMessage', {
             groupId: currentGroupId,
             userId: getCurrentUserId(),
             username: getCurrentUsername(),
-            content: content
+            content
         });
     }
 
@@ -485,11 +607,8 @@
             }
             return false;
         };
-
         if (!tryHook()) {
-            const interval = setInterval(() => {
-                if (tryHook()) clearInterval(interval);
-            }, 1000);
+            const interval = setInterval(() => { if (tryHook()) clearInterval(interval); }, 1000);
         }
     }
 
@@ -498,15 +617,12 @@
         try {
             const devId = typeof window.ApiClient.deviceId === 'function' ? window.ApiClient.deviceId() : null;
             if (!devId) return;
-
             const sessions = await window.ApiClient.getSessions();
             const mySession = sessions.find(s => s.DeviceId === devId);
-
             if (mySession && mySession.NowPlayingItem) {
                 const item = mySession.NowPlayingItem;
-                const itemId = item.Id;
                 const itemName = item.SeriesName ? `${item.SeriesName} - ${item.Name}` : item.Name;
-                handleRoomChange(itemId, itemName);
+                handleRoomChange(item.Id, itemName);
             } else {
                 handleRoomChange('global', 'Global Chat');
             }
@@ -517,31 +633,20 @@
 
     function handleRoomChange(roomId, roomName) {
         if (currentGroupId === roomId) return;
-        
-        if (currentGroupId) {
-            leaveChatRoom(currentGroupId);
-        }
-        
+        if (currentGroupId) leaveChatRoom(currentGroupId);
         currentGroupId = roomId;
-        
         const badge = document.getElementById('spc-group-badge');
         if (badge) badge.textContent = roomName.length > 20 ? roomName.substring(0, 17) + '…' : roomName;
-        
         setActiveState(true);
-        appendSystemMessage(`You joined: ${roomName} 💬`);
-        
-        if (!socket) {
-            connectToChatServer();
-        } else if (isConnected) {
-            joinChatRoom(roomId);
-        }
+        appendSystemMessage(`Você entrou: ${roomName} 💬`);
+        if (!socket) connectToChatServer();
+        else if (isConnected) joinChatRoom(roomId);
     }
 
     function setActiveState(active) {
         const waiting = document.getElementById('spc-waiting');
         const messages = document.getElementById('spc-messages');
         const inputArea = document.getElementById('spc-input-area');
-        
         if (waiting) waiting.style.display = active ? 'none' : 'flex';
         if (messages) messages.style.display = active ? 'flex' : 'none';
         if (inputArea) inputArea.style.display = active ? 'flex' : 'none';
@@ -552,32 +657,23 @@
         const dot = document.getElementById('spc-status-dot');
         if (!dot) return;
         if (currentGroupId && isConnected) {
-            dot.style.background = '#10b981'; // Emerald
-            dot.style.boxShadow = 'none';
+            dot.style.background = '#10b981';
         } else if (currentGroupId && !isConnected) {
-            dot.style.background = '#f59e0b'; // Amber
-            dot.style.boxShadow = 'none';
+            dot.style.background = '#f59e0b';
         } else {
-            dot.style.background = '#ef4444'; // Red
-            dot.style.boxShadow = 'none';
+            dot.style.background = '#ef4444';
         }
     }
 
     // ─── DOM Helpers ──────────────────────────────────────────────────────────
     function appendMessageToDOM(msg) {
-        if (msg.isSystem) {
-            appendSystemMessage(msg.content);
-            return;
-        }
-
+        if (msg.isSystem) { appendSystemMessage(msg.content); return; }
         const container = document.getElementById('spc-messages');
         if (!container) return;
-
         const selfId = getCurrentUserId();
         const isOwn = msg.userId === selfId;
         const initials = (msg.username || '?').charAt(0).toUpperCase();
         const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
         const el = document.createElement('div');
         el.className = 'spc-msg' + (isOwn ? ' own' : '');
         el.innerHTML = `
@@ -627,17 +723,11 @@
     }
 
     function getCurrentUsername() {
-        // Fallback to extract from DOM if ApiClient doesn't expose it directly
         try {
             const userMenuBtn = document.querySelector('.headerUserButton');
-            if (userMenuBtn && userMenuBtn.title) {
-                return userMenuBtn.title.replace('User ', '').trim();
-            }
-            // Alternatively, some themes have it in .headerUserButton .userAvatar
-            // But we can also look up the user via ApiClient locally
+            if (userMenuBtn && userMenuBtn.title) return userMenuBtn.title.replace('User ', '').trim();
             if (window.ApiClient && window.ApiClient.getCurrentUserId) {
                 const id = window.ApiClient.getCurrentUserId();
-                // We'd have to make an async call to get the user, but for simplicity:
                 return 'User ' + id.substring(0, 4);
             }
         } catch (_) {}
@@ -645,17 +735,12 @@
     }
 
     // ─── SVG Icons ────────────────────────────────────────────────────────────
-    function chatIconSvg() {
-        return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+    function chatIconSvg(size = 16) {
+        return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
     }
 
     function sendSvg() {
         return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
-    }
-
-    function arrowSvg(direction) {
-        const d = direction === 'left' ? 'M15 18l-6-6 6-6' : 'M9 18l6-6-6-6';
-        return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="${d.replace('M','').replace('l',' ').replace('l',' ')}"/><path d="${d}"/></svg>`;
     }
 
     // ─── Init ─────────────────────────────────────────────────────────────────
@@ -664,6 +749,7 @@
         buildPanel();
         connectToChatServer();
         hookJellyfinEvents();
+        watchForPlayer();
     }
 
     if (document.readyState === 'loading') {
